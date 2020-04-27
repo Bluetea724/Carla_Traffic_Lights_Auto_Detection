@@ -31,3 +31,12 @@ Use ARROWS or WASD keys for control.
     F1           : toggle HUD
     H/?          : toggle help
     ESC          : quit
+
+# 2) obj.data, obj.names, train.txt, yolov3-tiny.cfg 
+Yolov3-Darknet configuration files
+
+yolov3-tiny.cfg -> need to change filter and classes
+    1) Currently, classes are 3 which are Green, Yellow, Red
+    2) filters=(classes + 5)x3
+
+train.txt -> image information what you want to train
