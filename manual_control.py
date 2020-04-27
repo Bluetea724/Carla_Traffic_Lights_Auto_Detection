@@ -29,7 +29,9 @@ Use ARROWS or WASD keys for control.
     C            : change weather (Shift+C reverse)
     Backspace    : change vehicle
 
-    R            : toggle recording images to disk, and verify whether there is traffic signal in that screen
+    R            : toggle recording images to disk, and verify whether there is traffic signal in that screen or check based on Yolo
+        1) If YoloUse = 0 -> traffic light auto detection based on Houghcircles function
+        2) If YoloUse = 1 -> traffic light auto detection based on Yolo
 
     CTRL + R     : toggle recording of simulation (replacing any previous)
     CTRL + P     : start replaying last recorded simulation
