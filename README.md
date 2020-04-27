@@ -43,3 +43,7 @@ train.txt -> image information what you want to train
 
 # 3) Yolo dataset and weight file 
 You can fine it with this url: https://drive.google.com/drive/folders/1Inju5YEVRLnQ6I-fPgB81yhJ2TZkl6Su?usp=sharing
+
+# 4) Other tools for this project
+Yolo mark - https://github.com/AlexeyAB/Yolo_mark
+Yolo Darknet - https://github.com/pjreddie/darknet
