@@ -40,3 +40,6 @@ yolov3-tiny.cfg -> need to change filter and classes
     2) filters=(classes + 5)x3
 
 train.txt -> image information what you want to train
+
+# 3) Yolo dataset and weight file 
+You can fine it with this url: https://drive.google.com/drive/folders/1Inju5YEVRLnQ6I-fPgB81yhJ2TZkl6Su?usp=sharing
