@@ -29,7 +29,7 @@ Use ARROWS or WASD keys for control.
     C            : change weather (Shift+C reverse)
     Backspace    : change vehicle
 
-    R            : toggle recording images to disk
+    R            : toggle recording images to disk, and verify whether there is traffic signal in that screen
 
     CTRL + R     : toggle recording of simulation (replacing any previous)
     CTRL + P     : start replaying last recorded simulation
@@ -59,6 +59,11 @@ try:
         sys.version_info.minor,
         'win-amd64' if os.name == 'nt' else 'linux-x86_64'))[0])
 except IndexError:
+    print("Unable to locate carla")
+    print("checked at destination", '../carla/dist/carla-*%d.%d-%s.egg' % (
+        sys.version_info.major,
+        sys.version_info.minor,
+        'win-amd64' if os.name == 'nt' else 'linux-x86_64'))
     pass
 
 
@@ -71,6 +76,9 @@ import carla
 
 from carla import ColorConverter as cc
 
+
+from ctypes import *
+
 import argparse
 import collections
 import datetime
@@ -79,6 +87,19 @@ import math
 import random
 import re
 import weakref
+
+
+import cv2
+
+import argparse
+import pdb
+import threading
+
+sys.path.append(os.path.join(os.getcwd(),'python/'))
+sys.path.append('/home/minhwan/opencv/build/darknet/python')
+import darknet as dn
+
+from PIL import Image
 
 try:
     import pygame
@@ -120,6 +141,32 @@ except ImportError:
     raise RuntimeError('cannot import numpy, make sure numpy package is installed')
 
 
+import threading
+import datetime
+
+DarkNet = 0 
+DarkMeta = 0
+YoloUse = 1
+
+# Code for Task base test
+class AsyncTask:
+    def __init__(self):
+        self.darknet = False
+        self.net = 0
+        self.mete = 0
+        pass
+    
+    def TaskDarknet(self):        
+        threading.Timer(3,self.TaskDarknet).start()    
+        #dn.set_gpu(0)
+        if self.darknet == False :
+            self.net = dn.load_net("/home/minhwan/opencv/build/darknet/yolov3-tiny.cfg", "/home/minhwan/opencv/build/darknet/yolov3-tiny.weights", 0)
+            #print(net)
+            self.meta = dn.load_meta("/home/minhwan/opencv/build/darknet/cfg/coco.data")
+            self.darknet = True
+        r = dn.detect(self.net, self.meta , "/home/minhwan/opencv/build/darknet/data/dog.jpg")
+        print(r)
+
 # ==============================================================================
 # -- Global functions ----------------------------------------------------------
 # ==============================================================================
@@ -146,13 +193,7 @@ class World(object):
     def __init__(self, carla_world, hud, args):
         self.world = carla_world
         self.actor_role_name = args.rolename
-        try:
-            self.map = self.world.get_map()
-        except RuntimeError as error:
-            print('RuntimeError: {}'.format(error))
-            print('  The server could not send the OpenDRIVE (.xodr) file:')
-            print('  Make sure it exists, has the same name of your town, and is correct.')
-            sys.exit(1)
+        self.map = self.world.get_map()
         self.hud = hud
         self.player = None
         self.collision_sensor = None
@@ -167,6 +208,9 @@ class World(object):
         self.world.on_tick(hud.on_world_tick)
         self.recording_enabled = False
         self.recording_start = 0
+        self.gametick = 0
+        self.drawboxdone = False
+        self.drawboxrun = True
 
     def restart(self):
         # Keep same camera config if the camera manager exists.
@@ -192,10 +236,6 @@ class World(object):
             self.destroy()
             self.player = self.world.try_spawn_actor(blueprint, spawn_point)
         while self.player is None:
-            if not self.map.get_spawn_points():
-                print('There are no spawn points available in your map/town.')
-                print('Please add some Vehicle Spawn Point to your UE4 scene.')
-                sys.exit(1)
             spawn_points = self.map.get_spawn_points()
             spawn_point = random.choice(spawn_points) if spawn_points else carla.Transform()
             self.player = self.world.try_spawn_actor(blueprint, spawn_point)
@@ -218,10 +258,26 @@ class World(object):
 
     def tick(self, clock):
         self.hud.tick(self, clock)
+        self.gametick += 1
 
     def render(self, display):
         self.camera_manager.render(display)
         self.hud.render(display)
+
+        debug = self.world.debug  
+        #world_snapshot = self.world.get_snapshot()
+        #print(world_snapshot)
+                
+        #Find traffic signal poll code - left it for future project
+        if 0:
+            if self.gametick % 20 == 0 and self.drawboxdone  == False and 0:
+                for vehicle in self.world.get_actors().filter('traffic.*'):
+                    if vehicle.type_id == 'traffic.speed_limit.30' or vehicle.type_id == 'traffic.speed_limit.60' or vehicle.type_id == 'traffic.speed_limit.90'or vehicle.type_id == 'traffic.stop':   
+                        #print(carla.BoundingBox(actor_snapshot.get_transform().location,carla.Vector3D(0.5,0.5,2)))
+                        #print(actor_snapshot.get_transform().rotation)
+                        debug.draw_box(carla.BoundingBox(vehicle.get_transform().location,carla.Vector3D(0.5,0.5,3)),vehicle.get_transform().rotation, 0.05, carla.Color(255,0,0,0),0)
+                self.drawboxdone = True
+        
 
     def destroy_sensors(self):
         self.camera_manager.sensor.destroy()
@@ -344,6 +400,7 @@ class KeyboardControl(object):
             world.player.apply_control(self._control)
 
     def _parse_vehicle_keys(self, keys, milliseconds):
+        
         self._control.throttle = 1.0 if keys[K_UP] or keys[K_w] else 0.0
         steer_increment = 5e-4 * milliseconds
         if keys[K_LEFT] or keys[K_a]:
@@ -374,7 +431,7 @@ class KeyboardControl(object):
             self._control.speed = .01
             self._rotation.yaw += 0.08 * milliseconds
         if keys[K_UP] or keys[K_w]:
-            self._control.speed = 3.333 if pygame.key.get_mods() & KMOD_SHIFT else 1.389
+            self._control.speed = 3.333 if pygame.key.get_mods() & KMOD_SHIFT else 2.778
         self._control.jump = keys[K_SPACE]
         self._rotation.yaw = round(self._rotation.yaw, 1)
         self._control.direction = self._rotation.get_forward_vector()
@@ -643,7 +700,6 @@ class LaneInvasionSensor(object):
         text = ['%r' % str(x).split()[-1] for x in lane_types]
         self.hud.notification('Crossed line %s' % ' and '.join(text))
 
-
 # ==============================================================================
 # -- GnssSensor --------------------------------------------------------
 # ==============================================================================
@@ -694,19 +750,14 @@ class CameraManager(object):
             (carla.Transform(carla.Location(x=-1, y=-bound_y, z=0.5)), Attachment.Rigid)]
         self.transform_index = 1
         self.sensors = [
-            ['sensor.camera.rgb', cc.Raw, 'Camera RGB', {}],
-            ['sensor.camera.depth', cc.Raw, 'Camera Depth (Raw)', {}],
-            ['sensor.camera.depth', cc.Depth, 'Camera Depth (Gray Scale)', {}],
-            ['sensor.camera.depth', cc.LogarithmicDepth, 'Camera Depth (Logarithmic Gray Scale)', {}],
-            ['sensor.camera.semantic_segmentation', cc.Raw, 'Camera Semantic Segmentation (Raw)', {}],
+            ['sensor.camera.rgb', cc.Raw, 'Camera RGB'],
+            ['sensor.camera.depth', cc.Raw, 'Camera Depth (Raw)'],
+            ['sensor.camera.depth', cc.Depth, 'Camera Depth (Gray Scale)'],
+            ['sensor.camera.depth', cc.LogarithmicDepth, 'Camera Depth (Logarithmic Gray Scale)'],
+            ['sensor.camera.semantic_segmentation', cc.Raw, 'Camera Semantic Segmentation (Raw)'],
             ['sensor.camera.semantic_segmentation', cc.CityScapesPalette,
-                'Camera Semantic Segmentation (CityScapes Palette)', {}],
-            ['sensor.lidar.ray_cast', None, 'Lidar (Ray-Cast)', {}],
-            ['sensor.camera.rgb', cc.Raw, 'Camera RGB Distorted',
-                {'lens_circle_multiplier': '3.0',
-                'lens_circle_falloff': '3.0',
-                'chromatic_aberration_intensity': '0.5',
-                'chromatic_aberration_offset': '0'}]]
+                'Camera Semantic Segmentation (CityScapes Palette)'],
+            ['sensor.lidar.ray_cast', None, 'Lidar (Ray-Cast)']]
         world = self._parent.get_world()
         bp_library = world.get_blueprint_library()
         for item in self.sensors:
@@ -716,10 +767,8 @@ class CameraManager(object):
                 bp.set_attribute('image_size_y', str(hud.dim[1]))
                 if bp.has_attribute('gamma'):
                     bp.set_attribute('gamma', str(gamma_correction))
-                for attr_name, attr_value in item[3].items():
-                    bp.set_attribute(attr_name, attr_value)
             elif item[0].startswith('sensor.lidar'):
-                bp.set_attribute('range', '50')
+                bp.set_attribute('range', '5000')
             item.append(bp)
         self.index = None
 
@@ -730,7 +779,7 @@ class CameraManager(object):
     def set_sensor(self, index, notify=True, force_respawn=False):
         index = index % len(self.sensors)
         needs_respawn = True if self.index is None else \
-            (force_respawn or (self.sensors[index][2] != self.sensors[self.index][2]))
+            (force_respawn or (self.sensors[index][0] != self.sensors[self.index][0]))
         if needs_respawn:
             if self.sensor is not None:
                 self.sensor.destroy()
@@ -784,8 +833,90 @@ class CameraManager(object):
             array = array[:, :, :3]
             array = array[:, :, ::-1]
             self.surface = pygame.surfarray.make_surface(array.swapaxes(0, 1))
-        if self.recording:
-            image.save_to_disk('_out/%08d' % image.frame)
+        
+        # To integrate object detect with self.recording 
+        if self.recording and image.frame % 30 ==0 :
+            global YoloUse
+            global DarkNet
+            global DarkMeta
+            if YoloUse ==1 and image.frame % 200 == 0:
+
+                save = 'test'
+                image.save_to_disk(save)
+                savefile = save + ".png"
+                src = cv2.imread(savefile, cv2.IMREAD_COLOR) 
+                r = dn.detect(DarkNet, DarkMeta , "/home/minhwan/github/carla/Dist/CARLA_Shipping_0.9.6-52-g8b888031/LinuxNoEditor/PythonAPI/examples/test.png")
+                print(r)
+                for i in r :
+                    #print(i[0])
+                    #print(i[1])
+                    #print(i[2]) 
+                    
+                    cv2.circle(src, (int(i[2][0]), int(i[2][1])), 6, (255, 255, 255), 2)     
+                if r is not None :
+                    cv2.imshow("dst", src)  
+                    cv2.waitKey(0)    
+
+            elif YoloUse == 0 :
+                now = datetime.datetime.now()
+                nowDatetime = now.strftime('%Y%m%d%H%M%S')
+                save = '_out/'+nowDatetime
+                image.save_to_disk(save)
+                savefile = save + ".png"
+                #save = '_out/20200424214732.png'
+                
+                #src = cv2.imread(savefile, cv2.IMREAD_GRAYSCALE) # read as it is
+                src = cv2.imread(savefile, cv2.IMREAD_COLOR) 
+                dst = src.copy()
+                gray = cv2.cvtColor(src, cv2.COLOR_BGR2GRAY)
+                img_canny = cv2.Canny(gray, 50, 300)
+                circles = cv2.HoughCircles(gray, cv2.HOUGH_GRADIENT, 1, 10, param1 = 300, param2 = 18, minRadius = 3, maxRadius = 10)
+                
+                
+                savetxt = save + ".txt"
+                f = open(savetxt, 'w')
+                if circles is None:
+                    remove = "rm "+savefile
+                    #Remove the file if the file didn't capture traffic signal 
+                    os.system(remove)
+                # Find something
+                else:
+                    saveflag = 0 
+                    for i in circles[0]:
+                        # Make circle                         
+                        cv2.circle(dst, (i[0], i[1]), i[2], (255, 255, 255), 2)
+                        x = int(i[0])                    
+                        y = int(i[1])
+                        #Green
+                        if src.item(y,x,2) < 200 and src.item(y,x,1) > 200 and src.item(y,x,0) < 180 :
+                            color = 1
+                            saveflag = 1
+                        #Red
+                        elif src.item(y,x,2) > 200 and src.item(y,x,1) < 200 and src.item(y,x,0) < 150:
+                            color = 0
+                            saveflag = 1
+                        #Yellow
+                        elif src.item(y,x,2) > 200 and src.item(y,x,1) > 200 and src.item(y,x,0) > 100 :
+                            color = 2
+                            saveflag = 1
+                        # writedata to txt file 
+
+                        # If it detects traffic signals, then save yolo txt file
+                        if saveflag == 1 :
+                            print(i[0], i[1], i[2]) 
+                            data = ("%i %f %f %f %f\n" %(color, i[0]/800 ,i[1]/600 ,i[2]*8/800,i[2]*15/600 ))
+                            f.write(data)
+                    
+                    f.close()
+                    if saveflag == 0:
+                        removetxt = "rm "+savetxt
+                        os.system(removetxt)
+                    else :
+                        print("Catpured")
+                        cv2.imshow("img_canny", img_canny)
+                        cv2.imshow("dst", dst)
+                        cv2.waitKey(0)
+
 
 
 # ==============================================================================
@@ -801,7 +932,10 @@ def game_loop(args):
     try:
         client = carla.Client(args.host, args.port)
         client.set_timeout(2.0)
-
+        client.load_world('Town05')
+        client.reload_world()
+        args.width = 800
+        args.height = 600
         display = pygame.display.set_mode(
             (args.width, args.height),
             pygame.HWSURFACE | pygame.DOUBLEBUF)
@@ -810,7 +944,8 @@ def game_loop(args):
         world = World(client.get_world(), hud, args)
         controller = KeyboardControl(world, args.autopilot)
 
-        clock = pygame.time.Clock()
+        clock = pygame.time.Clock()     
+      
         while True:
             clock.tick_busy_loop(60)
             if controller.parse_events(client, world, clock):
@@ -836,6 +971,10 @@ def game_loop(args):
 
 
 def main():
+    global YoloUse
+    global DarkNet
+    global DarkMeta
+
     argparser = argparse.ArgumentParser(
         description='CARLA Manual Control Client')
     argparser.add_argument(
@@ -886,6 +1025,13 @@ def main():
     logging.basicConfig(format='%(levelname)s: %(message)s', level=log_level)
 
     logging.info('listening to server %s:%s', args.host, args.port)
+
+    #at = AsyncTask()
+    #at.TaskDarknet()
+    #Load yolo setting 
+    if YoloUse == 1 :
+        DarkNet = dn.load_net("/home/minhwan/opencv/build/darknet/yolov3-tiny.cfg", "/home/minhwan/opencv/build/darknet/yolov3-tiny_100000.weights", 0)
+        DarkMeta = dn.load_meta("/home/minhwan/opencv/build/darknet/data/obj.data")
 
     print(__doc__)
 
