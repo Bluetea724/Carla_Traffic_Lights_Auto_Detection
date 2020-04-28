@@ -2,7 +2,7 @@
 
 You only look once (Yolo) is a state-of-the-art, real-time object detection system. The strong points of Yolo are fast and accurate. Currently, if CARLA user wants to use Yolo, they have to capture and label themselves. But I will make auto labeling feature to assist user's convenience, but also can be used as unsupervising learning. After capturing data, I checked those data with Yolo_mark which is yolo label program. Then, I trained, and tested it on CARLA.
 
-# 1) Manual_control.py - main source code
+# 1) manual_control.py - main source code
 
 Use ARROWS or WASD keys for control.
 
